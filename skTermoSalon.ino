@@ -21,8 +21,10 @@
 #include <DallasTemperature.h>
 
 //AP definitions
-#define AP_SSID "Wireless-N"
-#define AP_PASSWORD "z123456z"
+//#define AP_SSID "Wireless-N"
+//#define AP_PASSWORD "z123456z"
+#define AP_SSID "WLAN_BF"
+#define AP_PASSWORD "Z404A03CF9CBF"
 
 // EasyIoT server definitions
 #define EIOT_USERNAME    "admin"
