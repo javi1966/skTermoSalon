@@ -1,22 +1,6 @@
 
-
- /*
-  Created by Igor Jarc
- See http://iot-playground.com for details
- Please use community fourum on website do not contact author directly
- 
- Code based on https://github.com/DennisSc/easyIoT-ESPduino/blob/master/sketches/ds18b20.ino
- 
- External libraries:
- - https://github.com/adamvr/arduino-base64
- - https://github.com/milesburton/Arduino-Temperature-Control-Library
- 
- This program is free software; you can redistribute it and/or
- modify it under the terms of the GNU General Public License
- version 2 as published by the Free Software Foundation.
- */
 #include <ESP8266WiFi.h>
-//#include <Base64.h>
+#include <ESP8266HTTPClient.h>
 #include <OneWire.h>
 #include <DallasTemperature.h>
 
@@ -26,14 +10,6 @@
 #define AP_SSID "WLAN_BF"
 #define AP_PASSWORD "Z404A03CF9CBF"
 
-// EasyIoT server definitions
-#define EIOT_USERNAME    "admin"
-#define EIOT_PASSWORD    "test"
-#define EIOT_IP_ADDRESS  "192.168.1.5"
-#define EIOT_PORT        80
-#define EIOT_NODE        "N13S0"
-
-#define REPORT_INTERVAL 3600 // in sec
 
 #define LED  0
 
@@ -49,60 +25,63 @@ String writeAPIKey = "TQVK604D9AF8ZIG2";
 
 char unameenc[USER_PWD_LEN];
 float oldTemp;
-
+bool bActualiza = true;
+const long timerUpdate =3600L;//1h
 
 void setup() {
   Serial.begin(115200);
   pinMode(LED, OUTPUT);
   digitalWrite(LED, LOW);
   delay(1000);
-  
+
+  noInterrupts();
+  timer0_isr_init();
+  timer0_attachInterrupt(TimingISR);
+  timer0_write(ESP.getCycleCount() + 80000000L); // 80MHz == 1sec
+  interrupts();
+
+  Serial.println();
+  Serial.print("MAC: ");
+  Serial.println(WiFi.macAddress());
+
   wifiConnect();
 
-   /* 
-  char uname[USER_PWD_LEN];
-  String str = String(EIOT_USERNAME)+":"+String(EIOT_PASSWORD);  
-  str.toCharArray(uname, USER_PWD_LEN); 
-  memset(unameenc,0,sizeof(unameenc));
-  base64_encode(unameenc, uname, strlen(uname));
-  oldTemp = -1;
-  */
-  
 }
 
 void loop() {
-  float temp;
-  
-  do {
-    DS18B20.requestTemperatures(); 
-    temp = DS18B20.getTempCByIndex(0);
-    Serial.print("Temperatura: ");
-    Serial.println(temp);
-    digitalWrite(LED, LOW); //flashing led
-    delay(500);
-    digitalWrite(LED, HIGH);
 
-  } while (temp == 85.0 || temp == (-127.0));
-  
-  if (temp != oldTemp)
-  {
-    sendTeperatura(temp);
+  float temp ;
+
+  if (bActualiza) {
+
+    do {
+      DS18B20.requestTemperatures();
+      temp = DS18B20.getTempCByIndex(0);
+      Serial.print("Temperatura: ");
+      Serial.println(temp);
+      digitalWrite(LED, LOW); //flashing led
+      delay(500);
+      digitalWrite(LED, HIGH);
+
+    } while (temp == 85.0 || temp == (-127.0));
+  //CACHE
+     if (temp != oldTemp)
+     {
+    sendTemperatura(temp);
     oldTemp = temp;
+     }
+    bActualiza = false;
   }
-  
-  int cnt = REPORT_INTERVAL;
-  
-  while(cnt--)
-    delay(1000);
+
 }
 //********************************************************************************************************************************
 void wifiConnect()
 {
-    Serial.print("Connecting to AP");
-    WiFi.begin(AP_SSID, AP_PASSWORD);
+  Serial.print("Connecting to AP");
+  WiFi.begin(AP_SSID, AP_PASSWORD);
 
-    int timeout = 0;
-    while (WiFi.status() != WL_CONNECTED) {
+  int timeout = 0;
+  while (WiFi.status() != WL_CONNECTED) {
     delay(1000);
     Serial.print("*");
 
@@ -115,68 +94,70 @@ void wifiConnect()
         digitalWrite(LED, HIGH);
         delay(100);
       }
-    } 
+    }
 
-    
   }
-  
+
+  //If connection successful show IP address in serial monitor
   Serial.println("");
-  Serial.println("WiFi conectado");  
+  Serial.println("WiFi conectado");
+  Serial.println("");
+  Serial.print("Connected to ");
+  Serial.println(AP_SSID);
+  Serial.print("IP address: ");
+  Serial.println(WiFi.localIP());
+
+
 }
 //***************************************************************************************************************************
-void sendTeperatura(float Temperatura)
-{  
-   WiFiClient client;
+void sendTemperatura(float Temperatura)
+{
+
+
+  if (WiFi.status() == WL_CONNECTED) {
+
+    HTTPClient http;
+    String cmd = "http://api.thingspeak.com/update?key=";
+    cmd += writeAPIKey;
+    cmd += "&field4=";
+    cmd += Temperatura;
+
+    http.begin(cmd);
+    Serial.print ("Sending: ");
+    Serial.println (cmd);
+
+    int httpCode = http.POST(cmd);
+
+    if (httpCode == HTTP_CODE_OK) {
+      String payload = http.getString();                  //Get the response payload
+      Serial.println (payload);
+    }
+    else
+      Serial.printf("[HTTP] POST... failed, error: %s\n", http.errorToString(httpCode).c_str());
+
    
-   while(!client.connect(host, 80)) {
-    Serial.println("Conexion ThingSpeak fallo");
-    wifiConnect(); 
+
+    http.end();
   }
-
-
-  String body = "field4=";
-         body +=  String(Temperatura);
   
-    Serial.println(body);
-
-    client.print("POST /update HTTP/1.1\n");
-    client.print("Host: api.thingspeak.com\n");
-    client.print("Connection: close\n");
-    client.print("X-THINGSPEAKAPIKEY: " + writeAPIKey + "\n");
-    client.print("Content-Type: application/x-www-form-urlencoded\n");
-    client.print("Content-Length: ");
-    client.print(body.length());
-    client.print("\n\n");
-    client.print(body);
-    client.print("\n\n");
-
-
-
-
-    client.stop();
-
-
- /*
-  String url = "";
-  url += "/Api/EasyIoT/Control/Module/Virtual/"+ String(EIOT_NODE) + "/ControlLevel/"+String(temp); // generate EasIoT server node URL
-
-  Serial.print("POST data to URL: ");
-  Serial.println(url);
-  
-  client.print(String("POST ") + url + " HTTP/1.1\r\n" +
-               "Host: " + String(EIOT_IP_ADDRESS) + "\r\n" + 
-               "Connection: close\r\n" + 
-               "Authorization: Basic " + unameenc + " \r\n" + 
-               "Content-Length: 0\r\n" + 
-               "\r\n");
-
-  delay(100);
-    while(client.available()){
-    String line = client.readStringUntil('\r');
-    Serial.print(line);
-  }
-  */
   Serial.println();
   Serial.println("Connection closed");
+
+
+}
+//**********************************************************************************************************************
+void TimingISR() {
+
+  static long cntTemp = 0L;
+
+  if (++cntTemp > timerUpdate)
+  {
+    bActualiza = true;
+
+    cntTemp = 0L;
+  }
+
+  timer0_write(ESP.getCycleCount() + 80000000L); // 80MHz == 1sec
+
 }
 
