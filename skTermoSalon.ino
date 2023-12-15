@@ -1,21 +1,20 @@
 
 #include <ESP8266WiFi.h>
 #include <ESP8266HTTPClient.h>
-#include <OneWire.h>
-#include <DallasTemperature.h>
-
-//AP definitions
-//#define AP_SSID "Wireless-N"
-//#define AP_PASSWORD "z123456z"
-#define AP_SSID "WLAN_BF"
-#define AP_PASSWORD "Z404A03CF9CBF"
+#include <Adafruit_Sensor.h>
+#include <DHT.h>
+#include "credentials.h"
 
 
 #define LED  0
 
-#define ONE_WIRE_BUS 2  // DS18B20 pin
+#define DHTTYPE   DHT11
+
+#define DHTPIN 2
+
+/*#define ONE_WIRE_BUS 2  // DS18B20 pin
 OneWire oneWire(ONE_WIRE_BUS);
-DallasTemperature DS18B20(&oneWire);
+DallasTemperature DS18B20(&oneWire);*/
 
 
 #define USER_PWD_LEN 40
@@ -23,16 +22,26 @@ DallasTemperature DS18B20(&oneWire);
 const char* host = "api.thingspeak.com";
 String writeAPIKey = "TQVK604D9AF8ZIG2";
 
+const char* ssid = WIFI_SSID ;
+const char* password = WIFI_PASSWD;
+
+float temperatura = 0;
+float humedad = 0;
 char unameenc[USER_PWD_LEN];
 float oldTemp;
 bool bActualiza = true;
 const long timerUpdate =3600L;//1h
+
+DHT dht(DHTPIN, DHTTYPE);
 
 void setup() {
   Serial.begin(115200);
   pinMode(LED, OUTPUT);
   digitalWrite(LED, LOW);
   delay(1000);
+
+  dht.begin();
+
 
   noInterrupts();
   timer0_isr_init();
@@ -54,22 +63,25 @@ void loop() {
 
   if (bActualiza) {
 
-    do {
-      DS18B20.requestTemperatures();
+    //do {
+     /* DS18B20.requestTemperatures();
       temp = DS18B20.getTempCByIndex(0);
       Serial.print("Temperatura: ");
-      Serial.println(temp);
+      Serial.println(temp);*/
+      humedad     = dht.readHumidity();
+      temperatura = dht.readTemperature();
+
+      Serial.print("Temperatura:");
+      Serial.println(temperatura);
+      Serial.print("Humedad:");
+      Serial.println(humedad); 
+
       digitalWrite(LED, LOW); //flashing led
       delay(500);
       digitalWrite(LED, HIGH);
-
-    } while (temp == 85.0 || temp == (-127.0));
-  //CACHE
-     if (temp != oldTemp)
-     {
-    sendTemperatura(temp);
-    oldTemp = temp;
-     }
+      
+      sendTemperatura(temperatura);
+  
     bActualiza = false;
   }
 
@@ -78,7 +90,7 @@ void loop() {
 void wifiConnect()
 {
   Serial.print("Connecting to AP");
-  WiFi.begin(AP_SSID, AP_PASSWORD);
+  WiFi.begin(WIFI_SSID, WIFI_PASSWD);
 
   int timeout = 0;
   while (WiFi.status() != WL_CONNECTED) {
@@ -103,7 +115,7 @@ void wifiConnect()
   Serial.println("WiFi conectado");
   Serial.println("");
   Serial.print("Connected to ");
-  Serial.println(AP_SSID);
+  Serial.println(WIFI_SSID);
   Serial.print("IP address: ");
   Serial.println(WiFi.localIP());
 
@@ -114,7 +126,7 @@ void sendTemperatura(float Temperatura)
 {
 
 
-  if (WiFi.status() == WL_CONNECTED) {
+  if (WiFi.status() == WL_CONNECTED) { 
 
     HTTPClient http;
     String cmd = "http://api.thingspeak.com/update?key=";
