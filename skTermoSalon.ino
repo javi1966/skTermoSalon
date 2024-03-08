@@ -35,7 +35,7 @@ const long timerUpdate =3600L;//1h
 DHT dht(DHTPIN, DHTTYPE);
 
 void setup() {
-  Serial.begin(115200);
+  Serial.begin(74880);
   pinMode(LED, OUTPUT);
   digitalWrite(LED, LOW);
   delay(1000);
